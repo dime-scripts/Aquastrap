@@ -1261,7 +1261,7 @@ class App(tk.Tk):
         except Exception as e:
             self.cstatus.config(text=f"INVALID JSON: {e}",fg=BAD)
             self.toast("INVALID JSON",False);return
-        out=build_config(flags)
+        out=build_config(flags).rstrip("\n")
         if write_echo(CONFIG,out)!=0:
             error("configuration write failed")
             self.toast("WRITE FAILED",False);return
