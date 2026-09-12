@@ -34,18 +34,6 @@ mv "$TMP/launcher" "$LAUNCHER"
 mv "$TMP/main" "$MAIN"
 chmod +x "$LAUNCHER" "$MAIN"
 echo "[AQUA]: files installed in $INSTALL_DIR"
-
-cat > "$DESKTOP" <<EOF
-[Desktop Entry]
-Type=Application
-Name=Aquastrap
-Comment=Launches Aquastrap
-Exec=python3 $LAUNCHER
-Icon=aquastrap
-Terminal=false
-Categories=Game;Utility;
-StartupWMClass=Aquastrap
-EOF
 chmod +x "$DESKTOP"
 echo "[AQUA]: desktop entry installed"
 
