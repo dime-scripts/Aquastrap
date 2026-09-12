@@ -3,40 +3,47 @@ set -euo pipefail
 
 INSTALL_DIR="$HOME/aquastrap"
 DESKTOP_DIR="$HOME/.local/share/applications"
-LAUNCHER="$INSTALL_DIR/Aquastrap.py"
 MAIN="$INSTALL_DIR/main.py"
 DESKTOP="$DESKTOP_DIR/aqua.desktop"
-BASE_URL="https://raw.githubusercontent.com/dime-scripts/Aquastrap/main"
+URL="https://raw.githubusercontent.com/dime-scripts/Aquastrap/refs/heads/main/AQUASTRAP.py"
 
 echo "[AQUA]: installer starting"
-command -v python3 >/dev/null 2>&1 || { echo "[ERROR]: python3 is required"; exit 1; }
+mkdir -p "$INSTALL_DIR" "$DESKTOP_DIR"
+
+echo "[AQUA]: downloading Main.py"
+TMP="$(mktemp)"
 if command -v curl >/dev/null 2>&1; then
-    fetch(){ curl -fsSL "$1" -o "$2"; }
+  curl -fsSL "$URL" -o "$TMP"
 elif command -v wget >/dev/null 2>&1; then
-    fetch(){ wget -q "$1" -O "$2"; }
+  wget -qO "$TMP" "$URL"
 else
-    echo "[ERROR]: curl or wget is required"; exit 1
+  echo "[ERROR]: curl or wget is required"
+  exit 1
 fi
 
-mkdir -p "$INSTALL_DIR" "$DESKTOP_DIR"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+if ! python3 -m py_compile "$TMP" 2>/dev/null; then
+  echo "[ERROR]: downloaded file is broken, aborting"
+  rm -f "$TMP"
+  exit 1
+fi
 
-echo "[AQUA]: downloading launcher"
-fetch "$BASE_URL/Aquastrap.py" "$TMP/launcher"
-echo "[AQUA]: downloading main application"
-fetch "$BASE_URL/Main.py" "$TMP/main"
+mv "$TMP" "$MAIN"
+chmod +x "$MAIN"
+echo "[AQUA]: main.py installed at $MAIN"
 
-python3 -m py_compile "$TMP/launcher" || { echo "[ERROR]: downloaded launcher is broken"; exit 1; }
-python3 -m py_compile "$TMP/main" || { echo "[ERROR]: downloaded application is broken"; exit 1; }
-
-mv "$TMP/launcher" "$LAUNCHER"
-mv "$TMP/main" "$MAIN"
-chmod +x "$LAUNCHER" "$MAIN"
-echo "[AQUA]: files installed in $INSTALL_DIR"
+cat > "$DESKTOP" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Aquastrap
+Comment=Launches Aquastrap
+Exec=python3 $MAIN
+Icon=aquastrap
+Terminal=false
+Categories=Game;Utility;
+StartupWMClass=Aquastrap
+EOF
 chmod +x "$DESKTOP"
-echo "[AQUA]: desktop entry installed"
+echo "[AQUA]: desktop entry installed at $DESKTOP"
 
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
 echo "[AQUA]: installation complete"
-echo "[AQUA]: run with: python3 $LAUNCHER  (or launch Aquastrap from the app menu)"
