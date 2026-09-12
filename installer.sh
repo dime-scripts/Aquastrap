@@ -10,8 +10,9 @@ URL="https://raw.githubusercontent.com/dime-scripts/Aquastrap/refs/heads/main/AQ
 echo "[AQUA]: installer starting"
 mkdir -p "$INSTALL_DIR" "$DESKTOP_DIR"
 
-echo "[AQUA]: downloading Main.py"
+echo "[AQUA]: downloading Aquastrap"
 TMP="$(mktemp)"
+trap 'rm -f "$TMP"' EXIT
 if command -v curl >/dev/null 2>&1; then
   curl -fsSL "$URL" -o "$TMP"
 elif command -v wget >/dev/null 2>&1; then
@@ -23,13 +24,12 @@ fi
 
 if ! python3 -m py_compile "$TMP" 2>/dev/null; then
   echo "[ERROR]: downloaded file is broken, aborting"
-  rm -f "$TMP"
   exit 1
 fi
 
 mv "$TMP" "$MAIN"
 chmod +x "$MAIN"
-echo "[AQUA]: main.py installed at $MAIN"
+echo "[AQUA]: launcher installed at $MAIN"
 
 cat > "$DESKTOP" <<EOF
 [Desktop Entry]
@@ -47,3 +47,4 @@ echo "[AQUA]: desktop entry installed at $DESKTOP"
 
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
 echo "[AQUA]: installation complete"
+echo "[AQUA]: first launch will download the full application, then start it"
