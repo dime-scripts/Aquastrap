@@ -435,33 +435,35 @@ class ScrollFrame(tk.Frame):
         for c in (w,)+tuple(w.winfo_children()):
             c.bind("<Button-4>",lambda e:self.canvas.yview_scroll(-3,"units"))
             c.bind("<Button-5>",lambda e:self.canvas.yview_scroll(3,"units"))
-class Page(tk.Canvas):
+class Page(tk.Frame):
     def __init__(self,master,xoff=214):
         self.CW=WINW-214;self.CH=WINH-TOPH
-        super().__init__(master,width=self.CW,height=self.CH,bg="#081823",highlightthickness=0,bd=0)
+        super().__init__(master,width=self.CW,height=self.CH,bg="#081823")
+        self.pack_propagate(False);self.grid_propagate(False)
         self.xoff=xoff;self.phase=0.0
+        self.c=tk.Canvas(self,width=self.CW,height=self.CH,bg="#081823",highlightthickness=0,bd=0)
+        self.c.place(x=0,y=0)
         for y in range(0,self.CH,3):
-            self.create_line(0,y,self.CW,y,fill="#0a1f2c",stipple="gray12")
+            self.c.create_line(0,y,self.CW,y,fill="#0a1f2c",stipple="gray12")
         self.waves=[]
         for gb,amp,spd,col,st in ((WINH-180,26,0.9,"#0a2636","gray12"),(WINH-132,20,1.4,"#0d3145","gray25"),(WINH-78,15,2.0,"#123f56","gray50")):
             base=gb-TOPH
-            it=self.create_polygon(self._pts(base,amp,0),fill=col,stipple=st,outline="")
+            it=self.c.create_polygon(self._pts(base,amp,0),fill=col,stipple=st,outline="")
             self.waves.append((it,base,amp,spd))
         self.rain=[]
         for i in range(40):
             x=(i*131)%self.CW;y=-((i*97)%self.CH);spd=4+(i%7);ln=2+(i%3)
             items=[]
             for j in range(ln):
-                it=self.create_rectangle(x,-999,x+2,-994,fill=(["#0e3a52","#155e75","#1d7894","#22d3ee"][i%4] if j==0 else "#0e3a52"),outline="")
+                it=self.c.create_rectangle(x,-999,x+2,-994,fill=(["#0e3a52","#155e75","#1d7894","#22d3ee"][i%4] if j==0 else "#0e3a52"),outline="")
                 items.append(it)
             self.rain.append([x,y,spd,ln,items])
         self.snow=[]
         for i in range(26):
             x=(i*73)%self.CW;y=(i*67)%self.CH;spd=0.4+(i%4)*0.3;ph=i
-            it=self.create_rectangle(x,y,x+2,y+2,fill="#dff6ff",outline="",stipple="gray50")
+            it=self.c.create_rectangle(x,y,x+2,y+2,fill="#dff6ff",outline="",stipple="gray50")
             self.snow.append([it,x,y,spd,ph])
-        self.bind("<Map>",lambda e:self._draw())
-        self.after(33,self._tick)
+        self.after(50,self._tick)
     def _pts(self,base,amp,ph):
         pts=[]
         for x in range(0,self.CW+1,10):
@@ -481,19 +483,20 @@ class Page(tk.Canvas):
     def _draw(self,*a):
         self.phase+=0.018
         for it,base,amp,spd in self.waves:
-            self.coords(it,*self._pts(base,amp,self.phase*spd))
+            self.c.coords(it,*self._pts(base,amp,self.phase*spd))
         for q in self.rain:
             x,y,spd,ln,items=q
             for j,it in enumerate(items):
                 yy=y-j*7
-                self.coords(it,x,yy,x+2,yy+5) if -10<yy<self.CH else self.coords(it,x,-999,x+2,-994)
+                if -10<yy<self.CH:self.c.coords(it,x,yy,x+2,yy+5)
+                else:self.c.coords(it,x,-999,x+2,-994)
             q[1]=y+spd
             if q[1]>self.CH:q[1]=-40-ln*7;q[0]=(q[0]+97)%self.CW
         for q in self.snow:
             it,x,y,spd,ph=q
             yy=y+spd if y+spd<=self.CH else -6
             xx=x+math.sin(self.phase*1.4+ph)*0.6
-            self.coords(it,xx,yy,xx+2,yy+2);q[1]=yy;q[2]=xx
+            self.c.coords(it,xx,yy,xx+2,yy+2);q[1]=yy;q[2]=xx
 class TopBar(tk.Canvas):
     def __init__(self,master,logo):
         super().__init__(master,width=WINW-214,height=TOPH,bg=BG,highlightthickness=0,bd=0)
@@ -784,10 +787,10 @@ class App(tk.Tk):
                 self._finish_loading(0)
         self.after(520,lambda:run_stage(0))
     def _finish_loading(self,waited):
-        if (not self._verdone.is_set()) and waited<100:
+        if (not self._verdone.is_set()) and waited<45:
             self.after(120,lambda:self._finish_loading(waited+1))
             return
-        if waited<26:
+        if waited<14:
             self.after(120,lambda:self._finish_loading(waited+1))
             return
         self.splash.set_progress(1.0)
@@ -1029,7 +1032,7 @@ class App(tk.Tk):
         sober=False
         if flat:
             try:
-                sober=subprocess.run(["flatpak","info",APPID],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
+                sober=subprocess.run(["flatpak","info",APPID],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=8).returncode==0
             except Exception:
                 sober=False
         cfg=CONFIG.exists()
@@ -1346,20 +1349,31 @@ class App(tk.Tk):
         pathrow("Log",LOGFILE)
         pathrow("Main",MAINPY)
         c5=card(right,"RUNTIME")
-        for label,ok in (("flatpak",shutil.which("flatpak") is not None),(APPID,self._sober_installed())):
+        runtime={}
+        for label in ("flatpak",APPID):
             r=tk.Frame(c5,bg=PANEL);r.pack(fill="x",pady=2)
             tk.Label(r,text=label,bg=PANEL,fg=DIM,font=FS(8)).pack(side="left")
-            tk.Label(r,text="READY" if ok else "MISSING",bg=PANEL,fg=OK if ok else BAD,font=FS(8,True)).pack(side="right")
+            v=tk.Label(r,text="...",bg=PANEL,fg=DIM,font=FS(8,True));v.pack(side="right")
+            runtime[label]=v
         tk.Label(c5,text="flatpak run "+APPID,bg=PANEL,fg="#5b7d90",font=FS(7),anchor="w").pack(fill="x",pady=(6,0))
+        def runtime_check():
+            flat=shutil.which("flatpak") is not None
+            sober=False
+            if flat:
+                try:sober=subprocess.run(["flatpak","info",APPID],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=8).returncode==0
+                except Exception:sober=False
+            def apply():
+                runtime["flatpak"].config(text="READY" if flat else "MISSING",fg=OK if flat else BAD)
+                runtime[APPID].config(text="READY" if sober else "MISSING",fg=OK if sober else BAD)
+            try:self.after(0,apply)
+            except tk.TclError:pass
+        threading.Thread(target=runtime_check,daemon=True).start()
         c6=card(right,"ABOUT")
         tk.Label(c6,text="Aquastrap manages Sober fast flags and configuration. Everything is stored under "+str(BASE),bg=PANEL,fg=DIM,font=FS(7),anchor="w",justify="left",wraplength=330).pack(fill="x")
         rr=tk.Frame(c6,bg=PANEL);rr.pack(fill="x",pady=(8,0))
         AquaButton(rr,"REPOSITORY",lambda:self._open_url("https://github.com/dime-scripts/Aquastrap"),w=150,h=30,fs=8,top="#1d4a63",bot="#103044",htop="#2a6a8c",hbot="#164861",fg=INK,rad=8).pack(side="left",padx=(0,6))
         AquaButton(rr,"SOBER DOCS",lambda:self._open_url("https://vinegarhq.org/Sober/Configuration/index.html"),w=150,h=30,fs=8,top="#1d4a63",bot="#103044",htop="#2a6a8c",hbot="#164861",fg=INK,rad=8).pack(side="left")
         tk.Frame(wrap,bg="#081823",height=12).pack(fill="x")
-    def _sober_installed(self):
-        try:return subprocess.run(["flatpak","info",APPID],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
-        except Exception:return False
     def _open_url(self,url):
         try:
             subprocess.Popen(["xdg-open",url],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,stdin=subprocess.DEVNULL,start_new_session=True)
