@@ -7,9 +7,11 @@ FLAGDIR=BASE/"savedfastflags"
 CONFIG=Path.home()/".var/app/org.vinegarhq.Sober/config/sober/config.json"
 DATA=Path.home()/".var/app/org.vinegarhq.Sober/data/sober"
 APPID="org.vinegarhq.Sober"
-VERSION="v0.8"
+VERSION="v0.9"
 VERURL="https://raw.githubusercontent.com/dime-scripts/Aquastrap/refs/heads/main/VERSION"
-SCRIPTURL="https://raw.githubusercontent.com/dime-scripts/Aquastrap/refs/heads/main/aquastrap.py"
+MAINURL="https://raw.githubusercontent.com/dime-scripts/Aquastrap/refs/heads/main/Main.py"
+SETTINGS=BASE/".settings.json"
+MAINPY=BASE/"main.py"
 STAMP="AQUA_READY"
 LOGFILE=BASE/"aquastrap.log"
 def _emit(tag,msg):
@@ -75,6 +77,7 @@ def _bootstrap():
 _bootstrap()
 import tkinter as tk
 from tkinter import font as tkfont
+from tkinter import filedialog
 BG="#07151e";PANEL="#0b2030";PANEL2="#0d2433";SIDEBAR="#05121b";INK="#d6f6ff";DIM="#7fa6bb";ACC="#22d3ee";ACC2="#0891b2";OK="#34d399";BAD="#fb7185";LINE="#16384a"
 FAM="Sans"
 def lerp(a,b,t):
@@ -184,6 +187,11 @@ def fval(s):
     except Exception:pass
     try:return float(s)
     except Exception:return s
+def load_settings():
+    d={"auto_update":True,"import_replaces":False}
+    try:d.update(json.loads(SETTINGS.read_text()))
+    except Exception:pass
+    return d
 def flag_targets():
     users=DATA/"prefix/drive_c/users"
     out=[DATA/"appData/ClientSettings"]
@@ -210,7 +218,11 @@ class AquaButton(tk.Canvas):
     def _click(self,e):
         if not self.on:return
         self.down=False
-        if self.command:self.command()
+        if self.command:
+            try:self.command()
+            except Exception as ex:
+                error(f"button action failed: {ex}")
+                self.tgt=0.0
     def set_text(self,t):
         self.text=t
     def set_enabled(self,v):
@@ -265,26 +277,6 @@ class ScrollFrame(tk.Frame):
         for c in (w,)+tuple(w.winfo_children()):
             c.bind("<Button-4>",lambda e:self.canvas.yview_scroll(-3,"units"))
             c.bind("<Button-5>",lambda e:self.canvas.yview_scroll(3,"units"))
-class TitleBtn(tk.Canvas):
-    def __init__(self,master,kind,cmd):
-        super().__init__(master,width=46,height=46,bg=BG,highlightthickness=0,bd=0)
-        self.kind=kind;self.cmd=cmd;self.hover=False
-        self.bind("<Enter>",lambda e:setattr(self,"hover",True))
-        self.bind("<Leave>",lambda e:setattr(self,"hover",False))
-        self.bind("<Button-1>",lambda e:self.cmd())
-        self.after(16,self._tick)
-    def _tick(self):
-        try:
-            self.delete("all")
-            if self.hover:self.create_rectangle(0,0,46,46,fill="#123245",outline="")
-            c=INK if self.hover else DIM
-            if self.kind=="min":
-                self.create_line(17,25,29,25,fill=c,width=2)
-            else:
-                self.create_line(17,17,29,29,fill=c,width=2);self.create_line(29,17,17,29,fill=c,width=2)
-            self.after(16,self._tick)
-        except tk.TclError:
-            pass
 class Sidebar(tk.Canvas):
     def __init__(self,root,app,tabs,logo=None):
         self.W=214;self.H=640
@@ -361,6 +353,38 @@ class Sidebar(tk.Canvas):
             self.after(33,self._tick)
         except tk.TclError:
             pass
+class AquaDialog(tk.Toplevel):
+    def __init__(self,master,title,multiline=False,ok="OK"):
+        super().__init__(master)
+        self.result=None;self.configure(bg=PANEL)
+        self.title(title);self.resizable(False,False)
+        try:self.wm_iconphoto(True,master.logo64)
+        except Exception:pass
+        self.transient(master)
+        tk.Label(self,text=title,bg=PANEL,fg=ACC,font=(FAM,14,"bold")).pack(anchor="w",padx=20,pady=(16,8))
+        if multiline:
+            box=tk.Frame(self,bg=PANEL);box.pack(fill="both",padx=20)
+            self.txt=tk.Text(box,width=60,height=11,bg=PANEL2,fg=INK,insertbackground=ACC,selectbackground="#155e75",relief="flat",bd=8,font=("Monospace",10),wrap="word",highlightthickness=1,highlightbackground=LINE,highlightcolor=ACC)
+            sb=tk.Scrollbar(box,orient="vertical",command=self.txt.yview,bg="#103044",troughcolor=PANEL2,relief="flat",width=10,highlightthickness=0,bd=0)
+            self.txt.configure(yscrollcommand=sb.set);sb.pack(side="right",fill="y");self.txt.pack(side="left",fill="both",expand=True)
+        else:
+            self.var=tk.StringVar()
+            self.ent=tk.Entry(self,width=64,textvariable=self.var,bg=PANEL2,fg=INK,insertbackground=ACC,relief="flat",highlightthickness=1,highlightbackground=LINE,highlightcolor=ACC,font=(FAM,10),bd=8)
+            self.ent.pack(fill="x",padx=20)
+        row=tk.Frame(self,bg=PANEL);row.pack(pady=16)
+        def accept():
+            self.result=self.txt.get("1.0","end-1c") if multiline else self.var.get().strip()
+            self.destroy()
+        AquaButton(row,ok,accept,w=120,h=36,fs=11).pack(side="left",padx=8)
+        AquaButton(row,"CANCEL",self.destroy,w=120,h=36,fs=11,top="#1d4a63",bot="#103044",htop="#2a6a8c",hbot="#164861").pack(side="left",padx=8)
+        self.bind("<Return>",lambda e:accept() if not multiline else None)
+        self.bind("<Escape>",lambda e:self.destroy())
+        self.update_idletasks()
+        sw,sh=self.winfo_screenwidth(),self.winfo_screenheight()
+        self.geometry(f"+{(sw-self.winfo_width())//2}+{(sh-self.winfo_height())//2}")
+        self.grab_set()
+        (self.txt if multiline else self.ent).focus_set()
+        self.wait_window(self)
 class App(tk.Tk):
     def __init__(self):
         global FAM
@@ -384,13 +408,12 @@ class App(tk.Tk):
         av=set(tkfont.families(self))
         FAM=next((f for f in ("Ubuntu","Cantarell","Segoe UI","Sans") if f in av),"Sans")
         self.proc=None
-        self.tabs=[("home","HOME"),("flags","FAST FLAGS"),("configuration","CONFIGURATION")]
+        self.settings=load_settings()
+        self.tabs=[("home","HOME"),("flags","FAST FLAGS"),("configuration","CONFIGURATION"),("settings","SETTINGS")]
         self.sb=Sidebar(self,self,self.tabs,self.logo32);self.sb.place(x=0,y=0)
         self.top=tk.Frame(self,bg=BG,height=46);self.top.place(x=214,y=0,width=786,height=46)
         tk.Label(self.top,image=self.logo16,bg=BG).pack(side="left",padx=(16,0))
         self.tlabel=tk.Label(self.top,text="AQUASTRAP",bg=BG,fg=DIM,font=(FAM,12,"bold"));self.tlabel.pack(side="left",padx=10)
-        TitleBtn(self.top,"close",self.destroy).pack(side="right")
-        TitleBtn(self.top,"min",self._minimize).pack(side="right")
         for w in (self.top,self.tlabel):
             w.bind("<ButtonPress-1>",self._drag_start)
             w.bind("<B1-Motion>",self._drag_move)
@@ -399,39 +422,33 @@ class App(tk.Tk):
         self._build_home()
         self._build_flags()
         self._build_config()
+        self._build_settings()
         for n,p in self.pages.items():
             p.place(in_=self.content,x=0,y=0,relwidth=1,relheight=1)
         self.pages["home"].lift()
         self.current="home"
         self._toast=None
         self._ov=None
-        self._was_iconified=False
         self.bind("<Map>",self._on_map)
         self.bind_all("<Button-1>",self._click_focus,add="+")
         self.attributes("-alpha",0.0)
         self._fade(0)
         self.after(120,self.focus_force)
         threading.Thread(target=self._check,daemon=True).start()
-        threading.Thread(target=self._check_version,daemon=True).start()
+        threading.Thread(target=self._version_worker,daemon=True).start()
         log(f"interface ready ({VERSION})")
+    def report_callback_exception(self,exc,val,tb):
+        error("tk callback: "+" ".join(traceback.format_exception(exc,val,tb)).replace("\n"," | "))
+    def _version_worker(self):
+        if self.settings.get("auto_update",True):
+            self._check_version(False)
+        else:
+            log("automatic update check disabled")
     def _reassert_borderless(self):
         if self._borderless:
             self._borderless=_undecorate(self)
     def _on_map(self,e):
-        if self._was_iconified:
-            self._was_iconified=False
-            self.after(80,self._reassert_borderless)
-    def _minimize(self):
-        try:
-            self.update_idletasks()
-            self._was_iconified=True
-            self.iconify()
-            log("window minimized")
-        except tk.TclError as e:
-            try:
-                self.wm_state("iconic")
-            except Exception:
-                warn(f"minimize failed: {e}")
+        self.after(80,self._reassert_borderless)
     def _click_focus(self,e):
         w=e.widget
         try:
@@ -448,7 +465,7 @@ class App(tk.Tk):
         req=urllib.request.Request(url,headers={"User-Agent":"Aquastrap/"+VERSION})
         with urllib.request.urlopen(req,timeout=timeout) as r:
             return r.read().decode("utf-8","replace")
-    def _check_version(self):
+    def _check_version(self,manual=False):
         remote=None
         for u in (VERURL,"https://raw.githubusercontent.com/dime-scripts/Aquastrap/main/VERSION"):
             try:
@@ -456,14 +473,20 @@ class App(tk.Tk):
             except Exception as e:
                 last=e
         if remote is None:
-            warn(f"version check failed: {last}");return
+            warn(f"version check failed: {last}")
+            if manual:self.after(0,lambda:self.toast("UPDATE CHECK FAILED",False))
+            return
         if not remote:
             warn("version check returned empty response");return
         if remote==VERSION:
             log(f"up to date ({VERSION})")
+            if manual:self.after(0,lambda:self.toast(f"UP TO DATE ({VERSION})"))
         else:
             warn(f"new version available: {remote} (current {VERSION})")
-            self.after(0,lambda:self._update_dialog(remote))
+            if self.settings.get("auto_update",True) and not manual:
+                self.after(0,lambda:self._do_update(remote))
+            else:
+                self.after(0,lambda:self._update_dialog(remote))
     def _update_dialog(self,newver):
         if self._ov is not None:return
         ov=tk.Frame(self.content,bg=PANEL,highlightthickness=2,highlightbackground=ACC)
@@ -483,7 +506,7 @@ class App(tk.Tk):
         threading.Thread(target=lambda:self._download_update(newver),daemon=True).start()
     def _download_update(self,newver):
         code=None
-        for u in (SCRIPTURL,"https://raw.githubusercontent.com/dime-scripts/Aquastrap/main/aquastrap.py"):
+        for u in (MAINURL,"https://raw.githubusercontent.com/dime-scripts/Aquastrap/main/Main.py"):
             try:
                 code=self._fetch(u,20);break
             except Exception as e:
@@ -491,21 +514,20 @@ class App(tk.Tk):
         if code is None:
             error(f"update download failed: {last}")
             self.after(0,lambda:self.toast("UPDATE DOWNLOAD FAILED",False));return
-        script=Path(__file__).resolve()
-        tmp=script.parent/".aquastrap.new.py"
+        tmp=BASE/".main.new.py"
         try:
             tmp.write_text(code)
             py_compile.compile(str(tmp),doraise=True,cfile=os.path.join(tempfile.gettempdir(),"aquastrap_update.pyc"))
-            bak=script.with_name(script.name+".bak")
-            if bak.exists():bak.unlink()
-            shutil.copy2(script,bak)
-            os.replace(tmp,script)
-            os.chmod(script,0o755)
-            log(f"updated to {newver}, restarting")
-            env=dict(os.environ);env[STAMP]="1"
+            MAINPY.parent.mkdir(parents=True,exist_ok=True)
+            bak=MAINPY.with_name("main.py.bak")
+            if MAINPY.exists():shutil.copy2(MAINPY,bak)
+            os.replace(tmp,MAINPY)
+            os.chmod(MAINPY,0o755)
+            log(f"updated to {newver} at {MAINPY}, restarting")
+            env=dict(os.environ);env.pop(STAMP,None)
             def restart():
                 self.toast(f"UPDATED TO {newver} - RESTARTING")
-                self.after(1000,lambda:os.execve(sys.executable,[sys.executable,str(script)]+sys.argv[1:],env))
+                self.after(1000,lambda:os.execve(sys.executable,[sys.executable,str(MAINPY)]+sys.argv[1:],env))
             self.after(0,restart)
         except Exception as e:
             error(f"update install failed: {e}")
@@ -539,26 +561,26 @@ class App(tk.Tk):
             try:self._toast.destroy()
             except tk.TclError:pass
         t=tk.Label(self.content,text=msg,bg=PANEL,fg=OK if ok else BAD,font=(FAM,10,"bold"),padx=18,pady=8)
-        t.place(relx=0.5,rely=1.02,anchor="s")
+        t.place(relx=0.5,rely=-0.02,anchor="n")
         self._toast=t
         def alive():
             return self._toast is t and bool(t.winfo_exists())
-        def up(i):
-            if not alive():return
-            try:t.place_configure(rely=1.02-0.08*(i+1)/10)
-            except tk.TclError:return
-            if i<9:self.after(12,lambda:up(i+1))
-            else:self.after(1700,lambda:down(0))
         def down(i):
             if not alive():return
-            try:t.place_configure(rely=0.94+0.08*i/10)
+            try:t.place_configure(rely=-0.02+0.07*(i+1)/10)
             except tk.TclError:return
-            if i<10:self.after(10,lambda:down(i+1))
+            if i<9:self.after(12,lambda:down(i+1))
+            else:self.after(1700,lambda:up(0))
+        def up(i):
+            if not alive():return
+            try:t.place_configure(rely=0.05-0.07*i/10)
+            except tk.TclError:return
+            if i<10:self.after(10,lambda:up(i+1))
             else:
                 if alive():
                     t.destroy()
                     if self._toast is t:self._toast=None
-        up(0)
+        down(0)
     def _card(self,parent,title):
         c=tk.Frame(parent,bg=PANEL,width=218,height=92,highlightthickness=1,highlightbackground=LINE)
         c.pack_propagate(False)
@@ -658,6 +680,13 @@ class App(tk.Tk):
         self.f_key,fkv=self._entry(r,26);self.f_key.pack(side="left",padx=(0,14))
         tk.Label(r,text="VALUE",bg="#081823",fg=DIM,font=(FAM,9,"bold")).pack(side="left",padx=(0,4))
         self.f_val,fvv=self._entry(r,30);self.f_val.pack(side="left")
+        io=tk.Frame(p,bg="#081823");io.pack(fill="x",padx=16,pady=(0,6))
+        sec="#1d4a63";secb="#103044";sech="#2a6a8c";sechb="#164861"
+        AquaButton(io,"IMPORT LINK",self._import_link,w=136,h=30,fs=9,top=sec,bot=secb,htop=sech,hbot=sechb,fg=INK,rad=8).pack(side="left",padx=3)
+        AquaButton(io,"IMPORT FILE",self._import_file,w=136,h=30,fs=9,top=sec,bot=secb,htop=sech,hbot=sechb,fg=INK,rad=8).pack(side="left",padx=3)
+        AquaButton(io,"IMPORT PASTE",self._import_paste,w=136,h=30,fs=9,top=sec,bot=secb,htop=sech,hbot=sechb,fg=INK,rad=8).pack(side="left",padx=3)
+        AquaButton(io,"EXPORT FILE",self._export_file,w=136,h=30,fs=9,rad=8).pack(side="right",padx=3)
+        AquaButton(io,"COPY JSON",self._copy_flags,w=136,h=30,fs=9,rad=8).pack(side="right",padx=3)
         body=tk.Frame(p,bg="#081823");body.pack(fill="both",expand=True,padx=16)
         left=tk.Frame(body,bg="#081823");left.pack(side="left",fill="both",expand=True)
         head=tk.Frame(left,bg=PANEL);head.pack(fill="x")
@@ -698,7 +727,7 @@ class App(tk.Tk):
         if not k:return
         self._add_row(k,v)
         self.f_key.delete(0,"end");self.f_val.delete(0,"end");self.f_key.focus_set()
-    def _add_row(self,k="",v=""):
+    def _add_row(self,k="",v="",save=True):
         f=tk.Frame(self.sf.inner,bg=PANEL2 if len(self.rows)%2 else PANEL)
         f.pack(fill="x",pady=1)
         ek,kv=self._entry(f,28,k);ek.pack(side="left",padx=(6,4),pady=3)
@@ -710,7 +739,8 @@ class App(tk.Tk):
         x.bind("<Leave>",lambda e:x.config(bg=f.cget("bg")))
         tup=(kv,vv,f)
         self.rows.append(tup)
-        self.sf.wheel(f);self._update_count();self._autosave()
+        self.sf.wheel(f);self._update_count()
+        if save:self._autosave()
     def _del_row(self,f):
         self.rows=[r for r in self.rows if r[2] is not f]
         f.destroy();self._update_count();self._autosave()
@@ -785,6 +815,116 @@ class App(tk.Tk):
         if failed:warn(f"{failed} target write(s) failed")
         if n:self.toast(f"APPLIED {len(data)} FLAGS TO {n} TARGET" if n==1 else f"APPLIED {len(data)} FLAGS TO {n} TARGETS")
         else:self.toast("FLAG WRITE FAILED",False)
+    def _parse_flag_text(self,text):
+        data=json.loads(text)
+        if not isinstance(data,dict):
+            raise ValueError("expected a JSON object of flag names")
+        return data
+    def _absorb(self,text,src):
+        try:
+            data=self._parse_flag_text(text)
+        except Exception as e:
+            error(f"flag import from {src} failed: {e}")
+            self.toast("IMPORT FAILED: INVALID JSON",False);return
+        if self.settings.get("import_replaces"):
+            for _,_,f in self.rows:f.destroy()
+            self.rows=[]
+        existing={kv.get().strip():vv for kv,vv,f in self.rows}
+        added=updated=0
+        for k,v in data.items():
+            s=self._v2s(v)
+            if k in existing:
+                existing[k].set(s);updated+=1
+            else:
+                self._add_row(str(k),s,save=False);added+=1
+        self._autosave();self._update_count()
+        log(f"imported {added} new and updated {updated} flags from {src}")
+        self.toast(f"IMPORTED {added} NEW / {updated} UPDATED")
+    def _import_link(self):
+        d=AquaDialog(self,"IMPORT FROM LINK")
+        url=(d.result or "").strip()
+        if not url:return
+        if not url.startswith(("http://","https://","raw")):url="https://"+url
+        self.toast("DOWNLOADING FLAGS")
+        def work():
+            try:text=self._fetch(url,15)
+            except Exception as e:
+                error(f"flag link download failed: {e}")
+                self.after(0,lambda:self.toast("LINK DOWNLOAD FAILED",False));return
+            self.after(0,lambda:self._absorb(text,"link"))
+        threading.Thread(target=work,daemon=True).start()
+    def _import_file(self):
+        fn=filedialog.askopenfilename(parent=self,title="Import fast flags",filetypes=[("JSON files","*.json"),("All files","*.*")])
+        if not fn:return
+        try:self._absorb(Path(fn).read_text(encoding="utf-8",errors="replace"),"file")
+        except Exception as e:
+            error(f"flag file import failed: {e}");self.toast("IMPORT FAILED",False)
+    def _import_paste(self):
+        d=AquaDialog(self,"PASTE FAST FLAG JSON",multiline=True)
+        if d.result and d.result.strip():
+            self._absorb(d.result,"clipboard")
+    def _export_file(self):
+        fn=filedialog.asksaveasfilename(parent=self,title="Export fast flags",defaultextension=".json",initialfile="ClientAppSettings.json",filetypes=[("JSON files","*.json"),("All files","*.*")])
+        if not fn:return
+        if write_echo(Path(fn),json.dumps(self._gather(),indent=2))==0:
+            self.toast("FLAGS EXPORTED")
+        else:self.toast("EXPORT FAILED",False)
+    def _copy_flags(self):
+        self.clipboard_clear()
+        self.clipboard_append(json.dumps(self._gather(),indent=2))
+        self.update()
+        log("fast flags copied to clipboard")
+        self.toast("FLAGS COPIED TO CLIPBOARD")
+    def _clear_flags(self):
+        for _,_,f in self.rows:f.destroy()
+        self.rows=[];self._autosave();self._update_count()
+        self.toast("ALL FLAGS CLEARED",False)
+    def _open_path(self,p):
+        try:
+            subprocess.Popen(["xdg-open",str(p)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,stdin=subprocess.DEVNULL,start_new_session=True)
+        except Exception as e:
+            error(f"could not open {p}: {e}");self.toast("OPEN FAILED",False)
+    def _build_settings(self):
+        p=tk.Frame(self.content,bg="#081823");self.pages["settings"]=p
+        wrap=tk.Frame(p,bg="#081823");wrap.pack(fill="both",expand=True,padx=26,pady=22)
+        tk.Label(wrap,text="SETTINGS",bg="#081823",fg=INK,font=(FAM,16,"bold")).pack(anchor="w")
+        grid=tk.Frame(wrap,bg="#081823");grid.pack(fill="both",expand=True,pady=12)
+        left=tk.Frame(grid,bg="#081823");left.pack(side="left",fill="both",expand=True,padx=(0,8))
+        right=tk.Frame(grid,bg="#081823");right.pack(side="left",fill="both",expand=True,padx=(8,0))
+        def card(parent,title):
+            c=tk.Frame(parent,bg=PANEL,highlightthickness=1,highlightbackground=LINE)
+            c.pack(fill="x",pady=6)
+            tk.Label(c,text=title,bg=PANEL,fg=ACC,font=(FAM,11,"bold"),anchor="w").pack(fill="x",padx=16,pady=(12,6))
+            b=tk.Frame(c,bg=PANEL);b.pack(fill="x",padx=16,pady=(0,14))
+            return b
+        def toggle(parent,text,key):
+            var=tk.IntVar(value=1 if self.settings.get(key) else 0)
+            cb=tk.Checkbutton(parent,text=text,variable=var,bg=PANEL,fg=INK,activebackground=PANEL,activeforeground=ACC,selectcolor=PANEL2,font=(FAM,10),anchor="w",relief="flat",bd=0,highlightthickness=0,command=lambda:self._set_setting(key,var.get()))
+            cb.pack(fill="x",pady=4)
+        c1=card(left,"UPDATES")
+        toggle(c1,"Check for and install updates on startup","auto_update")
+        AquaButton(c1,"CHECK FOR UPDATES NOW",lambda:threading.Thread(target=lambda:self._check_version(True),daemon=True).start(),w=240,h=34,fs=10).pack(anchor="w",pady=(10,2))
+        tk.Label(c1,text=f"Installed version: {VERSION}",bg=PANEL,fg=DIM,font=(FAM,9),anchor="w").pack(fill="x",pady=(8,0))
+        c2=card(left,"FAST FLAGS")
+        toggle(c2,"Import replaces all current flags instead of merging","import_replaces")
+        AquaButton(c2,"CLEAR ALL FLAGS",self._clear_flags,w=200,h=34,fs=10,top="#f43f5e",bot="#9f1239",htop="#fb7185",hbot="#e11d48",fg="#ffffff").pack(anchor="w",pady=(10,0))
+        c3=card(right,"STORAGE")
+        def pathrow(label,path,btn,cmd):
+            r=tk.Frame(c3,bg=PANEL);r.pack(fill="x",pady=3)
+            tk.Label(r,text=label,bg=PANEL,fg=DIM,font=(FAM,9),anchor="w",width=13).pack(side="left")
+            tk.Label(r,text=str(path),bg=PANEL,fg=INK,font=("Monospace",8),anchor="w").pack(side="left",fill="x",expand=True)
+            AquaButton(r,btn,cmd,w=70,h=26,fs=8,top="#1d4a63",bot="#103044",htop="#2a6a8c",hbot="#164861",fg=INK,rad=7).pack(side="right")
+        pathrow("Flags",FLAGDIR,"OPEN",lambda:self._open_path(FLAGDIR))
+        pathrow("Config",CONFIG.parent,"OPEN",lambda:self._open_path(CONFIG.parent))
+        pathrow("Log",LOGFILE.parent,"OPEN",lambda:self._open_path(LOGFILE.parent))
+        c4=card(right,"RUNTIME")
+        AquaButton(c4,"LAUNCH SOBER NOW",self.launch,w=220,h=36,fs=11).pack(anchor="w",pady=2)
+        tk.Label(c4,text="flatpak run "+APPID,bg=PANEL,fg=DIM,font=("Monospace",9),anchor="w").pack(fill="x",pady=(8,0))
+        tk.Label(wrap,text="Aquastrap "+VERSION,bg="#081823",fg="#3f6578",font=(FAM,9)).pack(side="bottom",anchor="w")
+    def _set_setting(self,key,val):
+        self.settings[key]=bool(val)
+        write_echo(SETTINGS,json.dumps(self.settings,indent=2))
+        log(f"setting {key} = {bool(val)}")
     def _build_config(self):
         p=tk.Frame(self.content,bg="#081823");self.pages["configuration"]=p
         bar=tk.Frame(p,bg="#081823");bar.pack(fill="x",padx=16,pady=(14,8))
