@@ -11,7 +11,7 @@ FONTFILE=FONTDIR/"PressStart2P.ttf"
 FONTNAME="Press Start 2P"
 CONFIG=Path.home()/".var/app/org.vinegarhq.Sober/config/sober/config.json"
 APPID="org.vinegarhq.Sober"
-VERSION="v0.10"
+VERSION="v0.11"
 VERURL="https://raw.githubusercontent.com/dime-scripts/Aquastrap/refs/heads/main/VERSION"
 MAINURL="https://raw.githubusercontent.com/dime-scripts/Aquastrap/refs/heads/main/Main.py"
 SETTINGS=BASE/".settings.json"
@@ -311,6 +311,35 @@ def merge_fflags_text(text,flags):
     comma="" if text[k] in "{," else ","
     prop='    "fflags": '+_ff_block(flags,"    ")+comma+"\n"
     return text[:close]+prop+text[close:]
+CONFIG_HEADER="""// !!! STOP !!!
+// This file is not meant to be edited by hand unless you know what you're doing. You are encouraged to use the settings menu instead (Right click Sober in your apps menu, then hit "Settings")
+// You can prevent Sober from launching by improperly formatting this file's JSON, or possibly mess up the Roblox engine by toggling certain flags intended for Roblox engineers.
+// Incase you mess up, you can reset this file by deleting it. It will be recreated the next time you launch Sober.
+// -------------------------------------------
+// Documentation is available at https://vinegarhq.org/Sober/Configuration/index.html - We encourage you to read it before toggling anything.
+"""
+CONFIG_TEMPLATE={
+    "FFlagDebugSkyGray":"True",
+    "allow_gamepad_permission":False,
+    "close_on_leave":False,
+    "discord_rpc_enabled":False,
+    "discord_rpc_show_join_button":False,
+    "enable_gamemode":True,
+    "enable_hidpi":False,
+    "enable_mobile_home_screen":False,
+    "fflags":{},
+    "graphics_optimization_mode":"balanced",
+    "server_location_indicator_enabled":False,
+    "touch_mode":"off",
+    "use_console_experience":False,
+    "use_libsecret":False,
+    "use_opengl":False
+}
+def build_config(flags):
+    if not isinstance(flags,dict):raise ValueError("input must be a JSON object")
+    cfg=dict(CONFIG_TEMPLATE);ff={k:v for k,v in flags.items() if k!="FFlagExample"}
+    cfg["fflags"]=ff
+    return CONFIG_HEADER+json.dumps(cfg,indent=4)+"\n"
 def load_settings():
     d={"auto_update":True,"import_replaces":False}
     try:d.update(json.loads(SETTINGS.read_text()))
@@ -1063,7 +1092,7 @@ class App(tk.Tk):
             self.toast("FLAG WRITE FAILED",False);return
         try:
             if hasattr(self,"txt"):
-                self.txt.delete("1.0","end");self.txt.insert("1.0",newtext)
+                self.txt.delete("1.0","end");self.txt.insert("1.0",json.dumps(ff,indent=2)+"\n")
                 self.cstatus.config(text="FLAGS APPLIED INTO fflags",fg=OK)
         except tk.TclError:pass
         log(f"fast flags written into fflags block of {CONFIG}")
@@ -1181,7 +1210,7 @@ class App(tk.Tk):
     def _build_config(self):
         p=tk.Frame(self.content,bg="#081823");self.pages["configuration"]=p
         bar=tk.Frame(p,bg="#081823");bar.pack(fill="x",padx=16,pady=(14,8))
-        tk.Label(bar,text=str(CONFIG),bg="#081823",fg=DIM,font=FS(9)).pack(side="left")
+        tk.Label(bar,text="PASTE FLAGS - AUTO-PLACED IN THE fflags SECTION",bg="#081823",fg=DIM,font=FS(8)).pack(side="left")
         AquaButton(bar,"APPLY",self._apply_config,w=110,h=34,fs=11).pack(side="right",padx=(8,0))
         AquaButton(bar,"VALIDATE",self._validate_config,w=110,h=34,fs=11,top="#1d4a63",bot="#103044",htop="#2a6a8c",hbot="#164861").pack(side="right",padx=(8,0))
         AquaButton(bar,"LOAD",self._load_config,w=110,h=34,fs=11,top="#1d4a63",bot="#103044",htop="#2a6a8c",hbot="#164861").pack(side="right")
@@ -1198,31 +1227,46 @@ class App(tk.Tk):
         self._load_config(silent=True)
     def _load_config(self,silent=False):
         if CONFIG.exists():
-            text=CONFIG.read_text()
-            self.cstatus.config(text="LOADED config.json",fg=DIM)
-            log(f"configuration loaded from {CONFIG}")
+            try:
+                cfg=lenient_json(CONFIG.read_text())
+                ff=cfg.get("fflags",{}) if isinstance(cfg,dict) else {}
+                text=json.dumps(ff if isinstance(ff,dict) else {},indent=2)+"\n"
+                self.cstatus.config(text="LOADED fflags FROM config.json",fg=DIM)
+                log(f"fflags loaded from {CONFIG}")
+            except Exception as e:
+                text="{}\n"
+                self.cstatus.config(text="config.json UNREADABLE - EMPTY fflags",fg=BAD)
+                warn(f"configuration unreadable: {e}")
         else:
             text="{\n}\n"
-            self.cstatus.config(text="config.json NOT FOUND - TEMPLATE LOADED",fg=DIM)
-            warn(f"configuration not found at {CONFIG}, template loaded")
+            self.cstatus.config(text="config.json NOT FOUND - PASTE YOUR FLAGS",fg=DIM)
+            warn(f"configuration not found at {CONFIG}, empty fflags shown")
         self.txt.delete("1.0","end");self.txt.insert("1.0",text)
-        if not silent:self.toast("CONFIGURATION LOADED")
+        if not silent:self.toast("fflags LOADED")
     def _validate_config(self):
         try:
-            lenient_json(self.txt.get("1.0","end-1c"));self.cstatus.config(text="VALID JSON",fg=OK)
-            log("configuration json validated")
+            d=lenient_json(self.txt.get("1.0","end-1c"))
+            if not isinstance(d,dict):raise ValueError("expected a JSON object of flags")
+            self.cstatus.config(text="VALID FLAGS JSON",fg=OK)
+            log("flags json validated")
             return True
         except Exception as e:
             self.cstatus.config(text=f"INVALID JSON: {e}",fg=BAD)
-            warn(f"invalid configuration json: {e}")
+            warn(f"invalid flags json: {e}")
             return False
     def _apply_config(self):
-        if not self._validate_config():
+        try:
+            flags=lenient_json(self.txt.get("1.0","end-1c"))
+            if not isinstance(flags,dict):raise ValueError("expected a JSON object of flags")
+        except Exception as e:
+            self.cstatus.config(text=f"INVALID JSON: {e}",fg=BAD)
             self.toast("INVALID JSON",False);return
-        if write_echo(CONFIG,self.txt.get("1.0","end-1c")+"\n")!=0:
+        out=build_config(flags)
+        if write_echo(CONFIG,out)!=0:
             error("configuration write failed")
             self.toast("WRITE FAILED",False);return
-        log(f"configuration written to {CONFIG}")
-        self.toast("CONFIGURATION WRITTEN")
+        log(f"configuration template written with {len(flags)-int('FFlagExample' in flags)} flags into fflags: {CONFIG}")
+        self.cstatus.config(text="WRITTEN - FLAGS ARE INSIDE fflags",fg=OK)
+        self.toast(f"CONFIGURATION WRITTEN ({len(flags)} FLAGS)")
 if __name__=="__main__":
     App().mainloop()
