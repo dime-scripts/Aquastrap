@@ -1,6 +1,7 @@
 # AQUASTRAP
 JOIN THE BEST AT
 [OUR DISCORD](https://discord.gg/X7kqQWMPjG)
+
 **The best strap. Ever.** 🌧️
 
 Aquastrap is a cozy, pixel-rain-soaked launcher and Fast Flag manager for
