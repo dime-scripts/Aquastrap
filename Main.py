@@ -11,7 +11,7 @@ FONTFILE=FONTDIR/"PressStart2P.ttf"
 FONTNAME="Press Start 2P"
 CONFIG=Path.home()/".var/app/org.vinegarhq.Sober/config/sober/config.json"
 APPID="org.vinegarhq.Sober"
-VERSION="v0.12"
+VERSION="v0.13"
 VERURL="https://raw.githubusercontent.com/dime-scripts/Aquastrap/refs/heads/main/VERSION"
 MAINURL="https://raw.githubusercontent.com/dime-scripts/Aquastrap/refs/heads/main/Main.py"
 SETTINGS=BASE/".settings.json"
@@ -337,6 +337,7 @@ CONFIG_TEMPLATE={
     "use_opengl":False
 }
 CHANGELOG=[
+ ("v0.13",["Fixed blank settings tab","Settings page is now scrollable","Loading and layout stability fixes"]),
  ("v0.12",["Rain, snow and waves now cover the whole window","Longer nostalgic loading screen with more messages","Home page changelog, quick actions and version status","Expanded settings and more reliable buttons"]),
  ("v0.11",["Flags are written straight into Sober's fflags block","Configuration tab accepts raw flag JSON","Full canonical config is generated automatically"]),
  ("v0.10",["Sober no longer resets your flags on launch","Commented config files are supported","Comments and defaults are preserved on write"]),
@@ -1312,8 +1313,8 @@ class App(tk.Tk):
         tk.Label(head,text="SETTINGS",bg="#081823",fg=INK,font=FS(14,True)).pack(side="left")
         tk.Label(head,text=VERSION,bg="#081823",fg=DIM,font=FS(9)).pack(side="right")
         grid=tk.Frame(wrap,bg="#081823");grid.pack(fill="x",padx=16)
-        left=tk.Frame(grid,bg="#081823",width=360);left.pack(side="left",fill="x",expand=True,padx=(0,6));left.pack_propagate(False)
-        right=tk.Frame(grid,bg="#081823",width=360);right.pack(side="left",fill="x",expand=True,padx=(6,0));right.pack_propagate(False)
+        left=tk.Frame(grid,bg="#081823");left.pack(side="left",fill="both",expand=True,padx=(0,6))
+        right=tk.Frame(grid,bg="#081823");right.pack(side="left",fill="both",expand=True,padx=(6,0))
         def card(parent,title):
             c=tk.Frame(parent,bg=PANEL,highlightthickness=1,highlightbackground=LINE)
             c.pack(fill="x",pady=6)
@@ -1341,7 +1342,7 @@ class App(tk.Tk):
         def pathrow(label,path):
             r=tk.Frame(c4,bg=PANEL);r.pack(fill="x",pady=2)
             tk.Label(r,text=label,bg=PANEL,fg=DIM,font=FS(8),anchor="w",width=10).pack(side="left",anchor="n")
-            tk.Label(r,text=str(path),bg=PANEL,fg=INK,font=FS(7),anchor="w",justify="left",wraplength=250).pack(side="left",fill="x",expand=True)
+            tk.Label(r,text=str(path),bg=PANEL,fg=INK,font=FS(7),anchor="w",justify="left",wraplength=190).pack(side="left",fill="x",expand=True)
             AquaButton(r,"OPEN",lambda q=path:self._open_path(q),w=60,h=24,fs=7,top="#1d4a63",bot="#103044",htop="#2a6a8c",hbot="#164861",fg=INK,rad=6).pack(side="right")
         pathrow("Flags",FLAGDIR)
         pathrow("Config",CONFIG.parent)
