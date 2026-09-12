@@ -11,7 +11,7 @@ FONTFILE=FONTDIR/"PressStart2P.ttf"
 FONTNAME="Press Start 2P"
 CONFIG=Path.home()/".var/app/org.vinegarhq.Sober/config/sober/config.json"
 APPID="org.vinegarhq.Sober"
-VERSION="v0.11"
+VERSION="v0.12"
 VERURL="https://raw.githubusercontent.com/dime-scripts/Aquastrap/refs/heads/main/VERSION"
 MAINURL="https://raw.githubusercontent.com/dime-scripts/Aquastrap/refs/heads/main/Main.py"
 SETTINGS=BASE/".settings.json"
@@ -107,6 +107,7 @@ _bootstrap()
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import filedialog
+WINW=1000;WINH=600;TOPH=46
 BG="#07151e";PANEL="#0b2030";PANEL2="#0d2433";SIDEBAR="#05121b";INK="#d6f6ff";DIM="#7fa6bb";ACC="#22d3ee";ACC2="#0891b2";OK="#34d399";BAD="#fb7185";LINE="#16384a"
 FAM="Sans"
 def FS(n,b=False):
@@ -335,6 +336,11 @@ CONFIG_TEMPLATE={
     "use_libsecret":False,
     "use_opengl":False
 }
+CHANGELOG=[
+ ("v0.12",["Rain, snow and waves now cover the whole window","Longer nostalgic loading screen with more messages","Home page changelog, quick actions and version status","Expanded settings and more reliable buttons"]),
+ ("v0.11",["Flags are written straight into Sober's fflags block","Configuration tab accepts raw flag JSON","Full canonical config is generated automatically"]),
+ ("v0.10",["Sober no longer resets your flags on launch","Commented config files are supported","Comments and defaults are preserved on write"]),
+ ("v0.9",["Import flags from link, file or clipboard","Settings tab and automatic updates","Pixel font and animated loading screen"])]
 def build_config(flags):
     if not isinstance(flags,dict):raise ValueError("input must be a JSON object")
     cfg=dict(CONFIG_TEMPLATE);ff={k:v for k,v in flags.items() if k!="FFlagExample"}
@@ -355,6 +361,7 @@ class AquaButton(tk.Canvas):
         self.bind("<Button-1>",lambda e:setattr(self,"down",True))
         self.bind("<ButtonRelease-1>",self._click)
         self.bind("<Map>",self._map)
+        self.bind("<Configure>",self._map)
         self.after(16,self._tick)
     def _click(self,e):
         if not self.on:return
@@ -376,15 +383,19 @@ class AquaButton(tk.Canvas):
         except tk.TclError:pass
     def _tick(self):
         try:
-            if self.winfo_exists() and self.winfo_ismapped():
-                self.ht+=(self.tgt-self.ht)*0.28
-                p=(0.5+0.5*math.sin(time.time()*3.2)) if self.pulse and self.on else 0.0
-                self._draw(self.ht,p)
-                self.after(16,self._tick)
+            if self.winfo_exists():
+                if self.winfo_ismapped():
+                    self.ht+=(self.tgt-self.ht)*0.28
+                    pr=(0.5+0.5*math.sin(time.time()*3.2)) if self.pulse and self.on else 0.0
+                    self._draw(self.ht,pr)
+                    self.after(16,self._tick)
+                else:
+                    self.after(60,self._tick)
             else:
-                self.after(140,self._tick)
+                return
         except tk.TclError:
-            pass
+            try:self.after(120,self._tick)
+            except tk.TclError:return
     def _draw(self,h,p):
         self.delete("all")
         if not self.on:
@@ -424,9 +435,92 @@ class ScrollFrame(tk.Frame):
         for c in (w,)+tuple(w.winfo_children()):
             c.bind("<Button-4>",lambda e:self.canvas.yview_scroll(-3,"units"))
             c.bind("<Button-5>",lambda e:self.canvas.yview_scroll(3,"units"))
+class Page(tk.Canvas):
+    def __init__(self,master,xoff=214):
+        self.CW=WINW-214;self.CH=WINH-TOPH
+        super().__init__(master,width=self.CW,height=self.CH,bg="#081823",highlightthickness=0,bd=0)
+        self.xoff=xoff;self.phase=0.0
+        for y in range(0,self.CH,3):
+            self.create_line(0,y,self.CW,y,fill="#0a1f2c",stipple="gray12")
+        self.waves=[]
+        for gb,amp,spd,col,st in ((WINH-180,26,0.9,"#0a2636","gray12"),(WINH-132,20,1.4,"#0d3145","gray25"),(WINH-78,15,2.0,"#123f56","gray50")):
+            base=gb-TOPH
+            it=self.create_polygon(self._pts(base,amp,0),fill=col,stipple=st,outline="")
+            self.waves.append((it,base,amp,spd))
+        self.rain=[]
+        for i in range(40):
+            x=(i*131)%self.CW;y=-((i*97)%self.CH);spd=4+(i%7);ln=2+(i%3)
+            items=[]
+            for j in range(ln):
+                it=self.create_rectangle(x,-999,x+2,-994,fill=(["#0e3a52","#155e75","#1d7894","#22d3ee"][i%4] if j==0 else "#0e3a52"),outline="")
+                items.append(it)
+            self.rain.append([x,y,spd,ln,items])
+        self.snow=[]
+        for i in range(26):
+            x=(i*73)%self.CW;y=(i*67)%self.CH;spd=0.4+(i%4)*0.3;ph=i
+            it=self.create_rectangle(x,y,x+2,y+2,fill="#dff6ff",outline="",stipple="gray50")
+            self.snow.append([it,x,y,spd,ph])
+        self.bind("<Map>",lambda e:self._draw())
+        self.after(33,self._tick)
+    def _pts(self,base,amp,ph):
+        pts=[]
+        for x in range(0,self.CW+1,10):
+            gx=self.xoff+x
+            y=base+math.sin(gx*0.018+ph)*amp+math.sin(gx*0.045+ph*1.7)*amp*0.35
+            pts+=[x,y]
+        pts+=[self.CW,self.CH,0,self.CH]
+        return pts
+    def _tick(self):
+        try:
+            if self.winfo_exists():
+                if self.winfo_ismapped():self._draw()
+                self.after(50,self._tick)
+        except tk.TclError:
+            try:self.after(200,self._tick)
+            except tk.TclError:pass
+    def _draw(self,*a):
+        self.phase+=0.018
+        for it,base,amp,spd in self.waves:
+            self.coords(it,*self._pts(base,amp,self.phase*spd))
+        for q in self.rain:
+            x,y,spd,ln,items=q
+            for j,it in enumerate(items):
+                yy=y-j*7
+                self.coords(it,x,yy,x+2,yy+5) if -10<yy<self.CH else self.coords(it,x,-999,x+2,-994)
+            q[1]=y+spd
+            if q[1]>self.CH:q[1]=-40-ln*7;q[0]=(q[0]+97)%self.CW
+        for q in self.snow:
+            it,x,y,spd,ph=q
+            yy=y+spd if y+spd<=self.CH else -6
+            xx=x+math.sin(self.phase*1.4+ph)*0.6
+            self.coords(it,xx,yy,xx+2,yy+2);q[1]=yy;q[2]=xx
+class TopBar(tk.Canvas):
+    def __init__(self,master,logo):
+        super().__init__(master,width=WINW-214,height=TOPH,bg=BG,highlightthickness=0,bd=0)
+        for y in range(TOPH):
+            col=lerp("#05121b","#081823",y/TOPH)
+            self.create_line(0,y,WINW-214,y,fill=col)
+        self.create_image(26,TOPH//2,image=logo)
+        self.title=self.create_text(54,TOPH//2,text="AQUASTRAP",fill=DIM,anchor="w",font=FS(11,True))
+        self.ver=self.create_text(WINW-228,TOPH//2,text=VERSION,fill="#3f6578",anchor="e",font=FS(8))
+        self.drops=[]
+        for i in range(14):
+            x=(i*83)%(WINW-214);y=-(i*31)%TOPH
+            it=self.create_rectangle(x,y,x+2,y+4,fill="#164257",outline="",stipple="gray25")
+            self.drops.append([it,x,y,3+(i%4)])
+        self.after(120,self._tick)
+    def _tick(self):
+        try:
+            for q in self.drops:
+                it,x,y,sp=q
+                yy=y+sp if y+sp<TOPH else -6
+                self.coords(it,x,yy,x+2,yy+4);q[2]=yy
+            self.after(90,self._tick)
+        except tk.TclError:
+            pass
 class Sidebar(tk.Canvas):
     def __init__(self,root,app,tabs,logo=None):
-        self.W=214;self.H=640
+        self.W=214;self.H=WINH
         super().__init__(root,width=self.W,height=self.H,bg=SIDEBAR,highlightthickness=0,bd=0)
         self.app=app;self.tabs=tabs;self.active=0;self.pill_y=104;self.hover=-1
         self.phase=0.0
@@ -532,29 +626,29 @@ class AquaDialog(tk.Toplevel):
         self.grab_set()
         (self.txt if multiline else self.ent).focus_set()
         self.wait_window(self)
-LOAD_LINES=["INITIALIZING","PROGRAMMER IS SLEEPING! SHH","POURING LIQUID PIXELS","TEACHING WAVES HOW TO WAVE","COUNTING SNOWFLAKES","BORROWING RAM FROM THE CAT","POLISHING EVERY DROPLET","DEFROSTING THE SERVER","REMEMBERING 2009","BLOWING INTO THE CARTRIDGE","COMPILING GOOD VIBES","LOADING THE LOADING","IT'S LATE. GO TO SLEEP SOON","ALMOST THERE, I PROMISE"]
+LOAD_LINES=["INITIALIZING","PROGRAMMER IS SLEEPING! SHH","POURING LIQUID PIXELS","TEACHING WAVES HOW TO WAVE","COUNTING SNOWFLAKES","BORROWING RAM FROM THE CAT","POLISHING EVERY DROPLET","DEFROSTING THE SERVER","REMEMBERING 2009","BLOWING INTO THE CARTRIDGE","COMPILING GOOD VIBES","LOADING THE LOADING","IT'S LATE. GO TO SLEEP SOON","ALMOST THERE, I PROMISE","REWINDING THE CASSETTE","FEEDING THE PIXELS","ADJUSTING THE SNOW GLOBES","WARMING UP THE CRT","SAVING A SEAT BY THE WINDOW","HIDING FROM THE UPDATE NOTES","MAKING THE RAIN FALL SIDEWAYS","ONE MORE CUP OF COFFEE"]
 class Loading(tk.Frame):
     def __init__(self,master,logo):
-        super().__init__(master,width=1000,height=640,bg="#040a14")
-        self.c=tk.Canvas(self,width=1000,height=640,bg="#040a14",highlightthickness=0,bd=0)
+        super().__init__(master,width=WINW,height=WINH,bg="#040a14")
+        self.c=tk.Canvas(self,width=WINW,height=WINH,bg="#040a14",highlightthickness=0,bd=0)
         self.c.pack(fill="both",expand=True)
-        for y in range(640):
-            t=y/640
+        for y in range(WINH):
+            t=y/WINH
             col=lerp("#040a14","#0a1c30",t)
-            self.c.create_rectangle(0,y,1000,y+1,fill=col,outline=col)
+            self.c.create_rectangle(0,y,WINW,y+1,fill=col,outline=col)
         for i in range(70):
             self.c.create_oval(20+(i*97)%960,12+(i*53)%300,22+(i*97)%960,14+(i*53)%300,fill="#9fd8e8" if i%5 else "#e8fbff",outline="",stipple="gray25")
-        self.c.create_oval(858,70,918,130,fill="#cfeefb",outline="",stipple="gray50")
-        self.c.create_oval(872,64,936,128,fill="#040a14",outline="")
-        for y in range(0,640,3):
-            self.c.create_line(0,y,1000,y,fill="#071220",stipple="gray12")
+        self.c.create_oval(858,60,918,120,fill="#cfeefb",outline="",stipple="gray50")
+        self.c.create_oval(872,54,936,118,fill="#040a14",outline="")
+        for y in range(0,WINH,3):
+            self.c.create_line(0,y,WINW,y,fill="#071220",stipple="gray12")
         self.waves=[]
-        for base,amp,spd,col,st in ((560,22,0.9,"#0a2636","gray12"),(592,18,1.4,"#0d3145","gray25"),(622,14,2.0,"#123f56","gray50")):
+        for base,amp,spd,col,st in ((WINH-80,22,0.9,"#0a2636","gray12"),(WINH-48,18,1.4,"#0d3145","gray25"),(WINH-18,14,2.0,"#123f56","gray50")):
             it=self.c.create_polygon(self._pts(base,amp,0),fill=col,stipple=st,outline="")
             self.waves.append((it,base,amp,spd))
         self.rain=[]
         for i in range(64):
-            x=(i*137)%1000;y=-((i*89)%700);spd=5+(i%9);ln=3+(i%5)
+            x=(i*137)%WINW;y=-((i*89)%700);spd=5+(i%9);ln=3+(i%5)
             head=["#0e3a52","#155e75","#1d7894","#22d3ee"][i%4]
             items=[]
             for j in range(ln):
@@ -563,28 +657,28 @@ class Loading(tk.Frame):
             self.rain.append([x,y,spd,ln,head,items])
         self.snow=[]
         for i in range(46):
-            x=(i*71)%1000;y=(i*61)%640;spd=0.6+(i%5)*0.35;ph=i*0.7
+            x=(i*71)%WINW;y=(i*61)%WINH;spd=0.6+(i%5)*0.35;ph=i*0.7
             it=self.c.create_rectangle(x,y,x+3,y+3,fill="#dff6ff",outline="",stipple="gray50")
             self.snow.append([it,x,y,spd,ph])
-        self.c.create_image(500,150,image=logo)
-        self.c.create_text(500,244,text="AQUASTRAP",fill="#a5f3fc",font=FS(40,True))
-        self.status=self.c.create_text(500,318,text=LOAD_LINES[0],fill=DIM,font=FS(13))
-        self.c.create_rectangle(278,356,722,384,fill="#071622",outline=LINE,width=2)
+        self.c.create_image(500,132,image=logo)
+        self.c.create_text(500,222,text="AQUASTRAP",fill="#a5f3fc",font=FS(40,True))
+        self.status=self.c.create_text(500,292,text=LOAD_LINES[0],fill=DIM,font=FS(13))
+        self.c.create_rectangle(278,330,722,358,fill="#071622",outline=LINE,width=2)
         self.segs=[]
         for i in range(22):
             x0=288+i*19;x1=x0+17
-            it=self.c.create_rectangle(x0,362,x1,378,fill="#0b2636",outline="")
+            it=self.c.create_rectangle(x0,336,x1,352,fill="#0b2636",outline="")
             self.segs.append(it)
-        self.pct=self.c.create_text(500,406,text="0%",fill=DIM,font=FS(11))
-        self.press=self.c.create_text(500,470,text="PRESS START",fill=ACC,font=FS(15,True))
+        self.pct=self.c.create_text(500,380,text="0%",fill=DIM,font=FS(11))
+        self.press=self.c.create_text(500,442,text="PRESS START",fill=ACC,font=FS(15,True))
         self.target=0.0;self.val=0.0;self.phase=0.0;self.idx=0;self.tic=0.0;self.blink=0.0
         self._tick()
     def _pts(self,base,amp,ph):
         pts=[]
-        for x in range(0,1001,10):
+        for x in range(0,WINW+1,10):
             y=base+math.sin(x*0.016+ph)*amp+math.sin(x*0.041+ph*1.7)*amp*0.35
             pts+=[x,y]
-        pts+=[1000,640,0,640]
+        pts+=[WINW,WINH,0,WINH]
         return pts
     def set_progress(self,v):
         self.target=max(self.target,min(1.0,v))
@@ -602,16 +696,16 @@ class Loading(tk.Frame):
                     else:
                         self.c.coords(it,x,-999,x+3,-994)
                 q[1]=y+spd
-                if q[1]>640:
+                if q[1]>WINH:
                     q[1]=-40-ln*7;q[0]=(q[0]+137)%1000
                     x=q[0]
             for it,x,y,spd,ph in self.snow:
                 yy=y+spd
                 xx=x+math.sin(self.phase*1.4+ph)*0.7
-                if yy>640:yy=-6
+                if yy>WINH:yy=-6
                 q[3]=spd;self.c.coords(it,xx,yy,xx+3,yy+3);q[1]=yy;q[2]=xx
             self.tic+=1
-            if self.tic%52==0:
+            if self.tic%64==0:
                 self.idx=(self.idx+1)%len(LOAD_LINES)
                 self.c.itemconfig(self.status,text=LOAD_LINES[self.idx])
             self.val+=(self.target-self.val)*0.18
@@ -637,7 +731,7 @@ class App(tk.Tk):
         except tk.TclError:pass
         self.configure(bg=BG)
         self.resizable(False,False)
-        W,H=1000,640
+        W,H=WINW,WINH
         sw=self.winfo_screenwidth();sh=self.winfo_screenheight()
         self.geometry(f"{W}x{H}+{(sw-W)//2}+{(sh-H)//2}")
         px128=logo_pixels(128)
@@ -658,13 +752,10 @@ class App(tk.Tk):
         self.settings=load_settings()
         self.tabs=[("home","HOME"),("flags","FAST FLAGS"),("configuration","CONFIGURATION"),("settings","SETTINGS")]
         self.sb=Sidebar(self,self,self.tabs,self.logo32);self.sb.place(x=0,y=0)
-        self.top=tk.Frame(self,bg=BG,height=46);self.top.place(x=214,y=0,width=786,height=46)
-        tk.Label(self.top,image=self.logo16,bg=BG).pack(side="left",padx=(16,0))
-        self.tlabel=tk.Label(self.top,text="AQUASTRAP",bg=BG,fg=DIM,font=FS(12,True));self.tlabel.pack(side="left",padx=10)
-        for w in (self.top,self.tlabel):
-            w.bind("<ButtonPress-1>",self._drag_start)
-            w.bind("<B1-Motion>",self._drag_move)
-        self.content=tk.Frame(self,bg="#081823");self.content.place(x=214,y=46,width=786,height=594)
+        self.top=TopBar(self,self.logo16);self.top.place(x=214,y=0)
+        self.top.bind("<ButtonPress-1>",self._drag_start)
+        self.top.bind("<B1-Motion>",self._drag_move)
+        self.content=tk.Frame(self,bg="#081823");self.content.place(x=214,y=TOPH,width=WINW-214,height=WINH-TOPH)
         self.pages={}
         self.current="home"
         self._toast=None
@@ -674,7 +765,7 @@ class App(tk.Tk):
         self.focus_force()
         self._verdone=threading.Event()
         self.splash=Loading(self,self.logo64)
-        self.splash.place(x=0,y=0,width=1000,height=640)
+        self.splash.place(x=0,y=0,width=WINW,height=WINH)
         self.splash.lift()
         stages=[(0.16,self._build_home),(0.40,self._build_flags),(0.64,self._build_config),(0.82,self._build_settings)]
         def run_stage(i):
@@ -683,7 +774,7 @@ class App(tk.Tk):
                 try:fn()
                 except Exception as e:error(f"stage failed: {e}")
                 self.splash.set_progress(prog)
-                self.after(150,lambda:run_stage(i+1))
+                self.after(460,lambda:run_stage(i+1))
             else:
                 self.pages["home"].place(in_=self.content,x=0,y=0,relwidth=1,relheight=1)
                 self.pages["home"].lift()
@@ -691,15 +782,18 @@ class App(tk.Tk):
                 threading.Thread(target=self._check,daemon=True).start()
                 threading.Thread(target=self._version_worker,daemon=True).start()
                 self._finish_loading(0)
-        self.after(260,lambda:run_stage(0))
+        self.after(520,lambda:run_stage(0))
     def _finish_loading(self,waited):
-        if (not self._verdone.is_set()) and waited<160:
+        if (not self._verdone.is_set()) and waited<100:
+            self.after(120,lambda:self._finish_loading(waited+1))
+            return
+        if waited<26:
             self.after(120,lambda:self._finish_loading(waited+1))
             return
         self.splash.set_progress(1.0)
         def close(i):
             if i>0:
-                self.splash.place_configure(y=-round(640*(8-i)/8))
+                self.splash.place_configure(y=-round(WINH*(8-i)/8))
                 self.after(14,lambda:close(i-1))
             else:
                 self.splash.destroy();self.splash=None
@@ -715,6 +809,27 @@ class App(tk.Tk):
                 log("automatic update check disabled")
         finally:
             self._verdone.set()
+            try:self.after(0,self._refresh_home_ver)
+            except tk.TclError:pass
+    def _refresh_home_ver(self):
+        try:
+            rv=getattr(self,"remote_ver",None)
+            if rv and rv!=VERSION:self.home_remote.config(text=f"UPDATE AVAILABLE: {rv}",fg=BAD)
+            elif rv:self.home_remote.config(text=f"UP TO DATE ({VERSION})",fg=OK)
+            else:self.home_remote.config(text=VERSION,fg=DIM)
+        except Exception:pass
+    def _reset_config(self):
+        try:
+            if CONFIG.exists():
+                bak=CONFIG.with_name("config.json.bak")
+                shutil.copy2(CONFIG,bak)
+            write_echo(CONFIG,build_config({}).rstrip("\n"))
+            if hasattr(self,"txt"):
+                self.txt.delete("1.0","end");self.txt.insert("1.0","{\n}\n")
+            log("config.json reset to defaults (backup saved)")
+            self.toast("CONFIG RESET TO DEFAULT")
+        except Exception as e:
+            error(f"config reset failed: {e}");self.toast("RESET FAILED",False)
     def _reassert_borderless(self):
         if self._borderless:
             self._borderless=_undecorate(self)
@@ -749,6 +864,9 @@ class App(tk.Tk):
             return
         if not remote:
             warn("version check returned empty response");return
+        self.remote_ver=remote
+        try:self.after(0,self._refresh_home_ver)
+        except tk.TclError:pass
         if remote==VERSION:
             log(f"up to date ({VERSION})")
             if manual:self.after(0,lambda:self.toast(f"UP TO DATE ({VERSION})"))
@@ -861,17 +979,34 @@ class App(tk.Tk):
         v=tk.Label(c,text="CHECKING",bg=PANEL,fg=INK,font=FS(12,True));v.pack(anchor="w",padx=14)
         return {"frame":c,"dot":dot,"it":it,"val":v,"state":None}
     def _build_home(self):
-        p=tk.Frame(self.content,bg="#081823");self.pages["home"]=p
-        tk.Label(p,text="AQUASTRAP",bg="#081823",fg=ACC,font=FS(42,True)).pack(pady=(64,0))
+        p=Page(self.content);self.pages["home"]=p
+        tk.Label(p,text="AQUASTRAP",bg="#081823",fg=ACC,font=FS(28,True)).pack(pady=(22,0))
         self.home_title=p.winfo_children()[-1]
-        tk.Label(p,text="DEPLOYMENT CONTROL",bg="#081823",fg=DIM,font=FS(10,True)).pack(pady=(2,26))
-        cards=tk.Frame(p,bg="#081823");cards.pack(pady=6)
-        self.c_flat=self._card(cards,"FLATPAK");self.c_flat["frame"].pack(side="left",padx=8)
-        self.c_sober=self._card(cards,"SOBER");self.c_sober["frame"].pack(side="left",padx=8)
-        self.c_cfg=self._card(cards,"CONFIGURATION");self.c_cfg["frame"].pack(side="left",padx=8)
-        self.launch=AquaButton(p,"LAUNCH",self.launch,w=300,h=62,fs=21,rad=16,pulse=True)
-        self.launch.pack(pady=34)
-        tk.Label(p,text=str(CONFIG),bg="#081823",fg="#45687a",font=FS(9)).pack(side="bottom",pady=14)
+        tk.Label(p,text="DEPLOYMENT CONTROL",bg="#081823",fg=DIM,font=FS(9,True)).pack(pady=(4,14))
+        cards=tk.Frame(p,bg="#081823");cards.pack(pady=2)
+        self.c_flat=self._card(cards,"FLATPAK");self.c_flat["frame"].pack(side="left",padx=6)
+        self.c_sober=self._card(cards,"SOBER");self.c_sober["frame"].pack(side="left",padx=6)
+        self.c_cfg=self._card(cards,"CONFIG");self.c_cfg["frame"].pack(side="left",padx=6)
+        self.launch=AquaButton(p,"LAUNCH",self.launch,w=286,h=54,fs=17,rad=14,pulse=True)
+        self.launch.pack(pady=16)
+        logpanel=tk.Frame(p,bg=PANEL,highlightthickness=1,highlightbackground=LINE,width=700)
+        logpanel.pack(fill="x",padx=34,pady=(2,8));logpanel.pack_propagate(False)
+        tk.Label(logpanel,text="CHANGELOG",bg=PANEL,fg=ACC,font=FS(10,True),anchor="w").pack(fill="x",padx=14,pady=(10,4))
+        for ver,items in CHANGELOG:
+            row=tk.Frame(logpanel,bg=PANEL);row.pack(fill="x",padx=14,anchor="w")
+            tk.Label(row,text=ver,bg=PANEL,fg="#7df9ff",font=FS(8,True),width=7,anchor="w").pack(side="left",anchor="n")
+            col=tk.Frame(row,bg=PANEL);col.pack(side="left",fill="x",expand=True)
+            for it in items:
+                tk.Label(col,text="- "+it,bg=PANEL,fg=DIM,font=FS(8),anchor="w",justify="left",wraplength=560).pack(fill="x",anchor="w")
+        logpanel.configure(height=172)
+        actions=tk.Frame(p,bg="#081823");actions.pack(fill="x",padx=34,pady=2)
+        AquaButton(actions,"OPEN FLAGS FOLDER",lambda:self._open_path(FLAGDIR),w=200,h=30,fs=8,top="#1d4a63",bot="#103044",htop="#2a6a8c",hbot="#164861",fg=INK,rad=8).pack(side="left",padx=4)
+        AquaButton(actions,"RESET CONFIG",self._reset_config,w=180,h=30,fs=8,top="#7f1d3a",bot="#4a0f24",htop="#9f1239",hbot="#7f1d3a",fg="#ffffff",rad=8).pack(side="left",padx=4)
+        self.home_remote=tk.Label(actions,text="CHECKING VERSION",bg="#081823",fg=DIM,font=FS(8))
+        self.home_remote.pack(side="right",padx=6)
+        bar=tk.Frame(p,bg="#081823");bar.pack(side="bottom",fill="x",pady=6)
+        tk.Label(bar,text=str(CONFIG),bg="#081823",fg="#45687a",font=FS(7)).pack(side="left",padx=14)
+        tk.Label(bar,text=VERSION,bg="#081823",fg="#45687a",font=FS(8,True)).pack(side="right",padx=14)
         self._home_tick(0)
     def _home_tick(self,i):
         try:
@@ -941,7 +1076,7 @@ class App(tk.Tk):
         e=tk.Entry(master,width=w,textvariable=v,bg=PANEL2,fg=INK,insertbackground=ACC,relief="flat",highlightthickness=1,highlightbackground=LINE,highlightcolor=ACC,font=FS(10),bd=4)
         return e,v
     def _build_flags(self):
-        p=tk.Frame(self.content,bg="#081823");self.pages["flags"]=p
+        p=Page(self.content);self.pages["flags"]=p
         top=tk.Frame(p,bg="#081823");top.pack(fill="x",padx=16,pady=(14,8))
         tk.Label(top,text="FAST FLAGS",bg="#081823",fg=INK,font=FS(13,True)).pack(side="left")
         r=tk.Frame(top,bg="#081823");r.pack(side="right")
@@ -1167,48 +1302,76 @@ class App(tk.Tk):
         except Exception as e:
             error(f"could not open {p}: {e}");self.toast("OPEN FAILED",False)
     def _build_settings(self):
-        p=tk.Frame(self.content,bg="#081823");self.pages["settings"]=p
-        wrap=tk.Frame(p,bg="#081823");wrap.pack(fill="both",expand=True,padx=26,pady=22)
-        tk.Label(wrap,text="SETTINGS",bg="#081823",fg=INK,font=FS(16,True)).pack(anchor="w")
-        grid=tk.Frame(wrap,bg="#081823");grid.pack(fill="both",expand=True,pady=12)
-        left=tk.Frame(grid,bg="#081823");left.pack(side="left",fill="both",expand=True,padx=(0,8))
-        right=tk.Frame(grid,bg="#081823");right.pack(side="left",fill="both",expand=True,padx=(8,0))
+        p=Page(self.content);self.pages["settings"]=p
+        sf=ScrollFrame(p,bg="#081823");sf.pack(fill="both",expand=True)
+        wrap=sf.inner;wrap.configure(bg="#081823")
+        head=tk.Frame(wrap,bg="#081823");head.pack(fill="x",padx=22,pady=(16,6))
+        tk.Label(head,text="SETTINGS",bg="#081823",fg=INK,font=FS(14,True)).pack(side="left")
+        tk.Label(head,text=VERSION,bg="#081823",fg=DIM,font=FS(9)).pack(side="right")
+        grid=tk.Frame(wrap,bg="#081823");grid.pack(fill="x",padx=16)
+        left=tk.Frame(grid,bg="#081823",width=360);left.pack(side="left",fill="x",expand=True,padx=(0,6));left.pack_propagate(False)
+        right=tk.Frame(grid,bg="#081823",width=360);right.pack(side="left",fill="x",expand=True,padx=(6,0));right.pack_propagate(False)
         def card(parent,title):
             c=tk.Frame(parent,bg=PANEL,highlightthickness=1,highlightbackground=LINE)
             c.pack(fill="x",pady=6)
-            tk.Label(c,text=title,bg=PANEL,fg=ACC,font=FS(11,True),anchor="w").pack(fill="x",padx=16,pady=(12,6))
-            b=tk.Frame(c,bg=PANEL);b.pack(fill="x",padx=16,pady=(0,14))
+            tk.Label(c,text=title,bg=PANEL,fg=ACC,font=FS(10,True),anchor="w").pack(fill="x",padx=14,pady=(10,4))
+            b=tk.Frame(c,bg=PANEL);b.pack(fill="x",padx=14,pady=(0,12))
             return b
         def toggle(parent,text,key):
             var=tk.IntVar(value=1 if self.settings.get(key) else 0)
-            cb=tk.Checkbutton(parent,text=text,variable=var,bg=PANEL,fg=INK,activebackground=PANEL,activeforeground=ACC,selectcolor=PANEL2,font=FS(10),anchor="w",relief="flat",bd=0,highlightthickness=0,command=lambda:self._set_setting(key,var.get()))
-            cb.pack(fill="x",pady=4)
+            cb=tk.Checkbutton(parent,text=text,variable=var,bg=PANEL,fg=INK,activebackground=PANEL,activeforeground=ACC,selectcolor=PANEL2,font=FS(8),anchor="w",justify="left",relief="flat",bd=0,highlightthickness=0,wraplength=320,command=lambda:self._set_setting(key,var.get()))
+            cb.pack(fill="x",pady=3)
         c1=card(left,"UPDATES")
         toggle(c1,"Check for and install updates on startup","auto_update")
-        AquaButton(c1,"CHECK FOR UPDATES NOW",lambda:threading.Thread(target=lambda:self._check_version(True),daemon=True).start(),w=240,h=34,fs=10).pack(anchor="w",pady=(10,2))
-        tk.Label(c1,text=f"Installed version: {VERSION}",bg=PANEL,fg=DIM,font=FS(9),anchor="w").pack(fill="x",pady=(8,0))
+        AquaButton(c1,"CHECK FOR UPDATES NOW",lambda:threading.Thread(target=lambda:self._check_version(True),daemon=True).start(),w=240,h=32,fs=8).pack(anchor="w",pady=(8,2))
+        tk.Label(c1,text=f"Installed: {VERSION}",bg=PANEL,fg=DIM,font=FS(8),anchor="w").pack(fill="x",pady=(6,0))
+        tk.Label(c1,text="Updates download Main.py and restart the app automatically.",bg=PANEL,fg="#5b7d90",font=FS(7),anchor="w",justify="left",wraplength=330).pack(fill="x")
         c2=card(left,"FAST FLAGS")
-        toggle(c2,"Import replaces all current flags instead of merging","import_replaces")
-        AquaButton(c2,"CLEAR ALL FLAGS",self._clear_flags,w=200,h=34,fs=10,top="#f43f5e",bot="#9f1239",htop="#fb7185",hbot="#e11d48",fg="#ffffff").pack(anchor="w",pady=(10,0))
-        c3=card(right,"STORAGE")
-        def pathrow(label,path,btn,cmd):
-            r=tk.Frame(c3,bg=PANEL);r.pack(fill="x",pady=3)
-            tk.Label(r,text=label,bg=PANEL,fg=DIM,font=FS(9),anchor="w",width=13).pack(side="left")
-            tk.Label(r,text=str(path),bg=PANEL,fg=INK,font=FS(11),anchor="w").pack(side="left",fill="x",expand=True)
-            AquaButton(r,btn,cmd,w=70,h=26,fs=8,top="#1d4a63",bot="#103044",htop="#2a6a8c",hbot="#164861",fg=INK,rad=7).pack(side="right")
-        pathrow("Flags",FLAGDIR,"OPEN",lambda:self._open_path(FLAGDIR))
-        pathrow("Config",CONFIG.parent,"OPEN",lambda:self._open_path(CONFIG.parent))
-        pathrow("Log",LOGFILE.parent,"OPEN",lambda:self._open_path(LOGFILE.parent))
-        c4=card(right,"RUNTIME")
-        AquaButton(c4,"LAUNCH SOBER NOW",self.launch,w=220,h=36,fs=11).pack(anchor="w",pady=2)
-        tk.Label(c4,text="flatpak run "+APPID,bg=PANEL,fg=DIM,font=FS(12),anchor="w").pack(fill="x",pady=(8,0))
-        tk.Label(wrap,text="Aquastrap "+VERSION,bg="#081823",fg="#3f6578",font=FS(9)).pack(side="bottom",anchor="w")
+        toggle(c2,"Import replaces all flags instead of merging","import_replaces")
+        AquaButton(c2,"CLEAR ALL FLAGS",self._clear_flags,w=200,h=32,fs=8,top="#f43f5e",bot="#9f1239",htop="#fb7185",hbot="#e11d48",fg="#ffffff").pack(anchor="w",pady=(8,2))
+        AquaButton(c2,"OPEN SAVED PROFILES",lambda:self._open_path(FLAGDIR),w=240,h=32,fs=8,top="#1d4a63",bot="#103044",htop="#2a6a8c",hbot="#164861",fg=INK).pack(anchor="w",pady=2)
+        c3=card(left,"CONFIGURATION")
+        AquaButton(c3,"RESET config.json TO DEFAULT",self._reset_config,w=280,h=32,fs=8,top="#7f1d3a",bot="#4a0f24",htop="#9f1239",hbot="#7f1d3a",fg="#ffffff").pack(anchor="w",pady=2)
+        AquaButton(c3,"OPEN CONFIG FOLDER",lambda:self._open_path(CONFIG.parent),w=240,h=32,fs=8,top="#1d4a63",bot="#103044",htop="#2a6a8c",hbot="#164861",fg=INK).pack(anchor="w",pady=2)
+        tk.Label(c3,text=str(CONFIG),bg=PANEL,fg="#5b7d90",font=FS(7),anchor="w",justify="left",wraplength=330).pack(fill="x",pady=(6,0))
+        c4=card(right,"STORAGE")
+        def pathrow(label,path):
+            r=tk.Frame(c4,bg=PANEL);r.pack(fill="x",pady=2)
+            tk.Label(r,text=label,bg=PANEL,fg=DIM,font=FS(8),anchor="w",width=10).pack(side="left",anchor="n")
+            tk.Label(r,text=str(path),bg=PANEL,fg=INK,font=FS(7),anchor="w",justify="left",wraplength=250).pack(side="left",fill="x",expand=True)
+            AquaButton(r,"OPEN",lambda q=path:self._open_path(q),w=60,h=24,fs=7,top="#1d4a63",bot="#103044",htop="#2a6a8c",hbot="#164861",fg=INK,rad=6).pack(side="right")
+        pathrow("Flags",FLAGDIR)
+        pathrow("Config",CONFIG.parent)
+        pathrow("App data",BASE)
+        pathrow("Log",LOGFILE)
+        pathrow("Main",MAINPY)
+        c5=card(right,"RUNTIME")
+        for label,ok in (("flatpak",shutil.which("flatpak") is not None),(APPID,self._sober_installed())):
+            r=tk.Frame(c5,bg=PANEL);r.pack(fill="x",pady=2)
+            tk.Label(r,text=label,bg=PANEL,fg=DIM,font=FS(8)).pack(side="left")
+            tk.Label(r,text="READY" if ok else "MISSING",bg=PANEL,fg=OK if ok else BAD,font=FS(8,True)).pack(side="right")
+        tk.Label(c5,text="flatpak run "+APPID,bg=PANEL,fg="#5b7d90",font=FS(7),anchor="w").pack(fill="x",pady=(6,0))
+        c6=card(right,"ABOUT")
+        tk.Label(c6,text="Aquastrap manages Sober fast flags and configuration. Everything is stored under "+str(BASE),bg=PANEL,fg=DIM,font=FS(7),anchor="w",justify="left",wraplength=330).pack(fill="x")
+        rr=tk.Frame(c6,bg=PANEL);rr.pack(fill="x",pady=(8,0))
+        AquaButton(rr,"REPOSITORY",lambda:self._open_url("https://github.com/dime-scripts/Aquastrap"),w=150,h=30,fs=8,top="#1d4a63",bot="#103044",htop="#2a6a8c",hbot="#164861",fg=INK,rad=8).pack(side="left",padx=(0,6))
+        AquaButton(rr,"SOBER DOCS",lambda:self._open_url("https://vinegarhq.org/Sober/Configuration/index.html"),w=150,h=30,fs=8,top="#1d4a63",bot="#103044",htop="#2a6a8c",hbot="#164861",fg=INK,rad=8).pack(side="left")
+        tk.Frame(wrap,bg="#081823",height=12).pack(fill="x")
+    def _sober_installed(self):
+        try:return subprocess.run(["flatpak","info",APPID],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
+        except Exception:return False
+    def _open_url(self,url):
+        try:
+            subprocess.Popen(["xdg-open",url],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,stdin=subprocess.DEVNULL,start_new_session=True)
+            log(f"opened {url}")
+        except Exception as e:
+            error(f"could not open url: {e}");self.toast("OPEN FAILED",False)
     def _set_setting(self,key,val):
         self.settings[key]=bool(val)
         write_echo(SETTINGS,json.dumps(self.settings,indent=2))
         log(f"setting {key} = {bool(val)}")
     def _build_config(self):
-        p=tk.Frame(self.content,bg="#081823");self.pages["configuration"]=p
+        p=Page(self.content);self.pages["configuration"]=p
         bar=tk.Frame(p,bg="#081823");bar.pack(fill="x",padx=16,pady=(14,8))
         tk.Label(bar,text="PASTE FLAGS - AUTO-PLACED IN THE fflags SECTION",bg="#081823",fg=DIM,font=FS(8)).pack(side="left")
         AquaButton(bar,"APPLY",self._apply_config,w=110,h=34,fs=11).pack(side="right",padx=(8,0))
